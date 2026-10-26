@@ -51,7 +51,8 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
 @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .card .top{display:flex;align-items:flex-start;gap:8px}
 .card .word{font-size:24px;font-weight:700;flex:1;word-break:break-word;letter-spacing:.2px}
-.card .ph{font-size:14px;color:var(--muted);margin-top:2px}
+.card .ph{font-size:14px;color:var(--muted);margin-top:2px;letter-spacing:.2px}
+.phgap{margin:0 6px;opacity:.55}
 .card .defs{margin:12px 0 0;padding:0;list-style:none;-webkit-user-select:text;user-select:text}
 .card .defs li{padding:10px 0;border-top:1px solid var(--line);font-size:16px;line-height:1.75;word-break:break-word}
 .card .defs li:first-child{border-top:0}
@@ -169,6 +170,16 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
 </div>
 <div class="toast" id="toast"></div>
 
+<script>
+setTimeout(function(){
+  var b=document.getElementById('boot'); if(!b || b.querySelector('button')) return;
+  var t=document.createElement('button');
+  t.textContent='加载较慢，点此重试';
+  t.style.cssText='margin-top:6px;padding:10px 18px;border-radius:12px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit';
+  t.onclick=function(){ location.reload(); };
+  b.appendChild(t);
+}, 8000);
+</script>
 <script src="dict.js"></script>
 <script>
 (function(){
@@ -181,13 +192,19 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
   var KEY_VOCAB = 'offline_dict_vocab_v1', KEY_HIST = 'offline_dict_hist_v1', KEY_THEME = 'offline_dict_theme_v1';
   var CN = /[\u4e00-\u9fa5]/;
   var TAG = {'四级':'t4','六级':'t6','雅思':'ti','托福':'tt','GRE':'tg','考研':'tky','常用':'tc','扩展':'te','物流':'tl','基础':'tb','高频':'thf','牛津':'te'};
+  if(typeof DICT === 'undefined' || !DICT || !DICT.length){
+    var bkEl = document.getElementById('boot');
+    if(bkEl) bkEl.innerHTML = '<span>词库加载失败</span><button onclick="location.reload()" style="margin-top:8px;padding:10px 18px;border-radius:12px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit">重新加载</button>';
+    return;
+  }
   var words = [], normed = [], map = {};
-  for(var i=0;i<DICT.length;i++){
-    words.push(DICT[i]);
-    var nw = norm(DICT[i][0]);
-    normed.push(nw);
+  function addWord(w){
+    var nw = norm(w[0]);
+    var i = words.length;
+    words.push(w); normed.push(nw);
     if(!(nw in map)) map[nw] = i;
   }
+  for(var i=0;i<DICT.length;i++) addWord(DICT[i]);
   function exactIdx(q){ var k = norm(q); return (k in map) ? map[k] : null; }
 
   function norm(s){ return String(s).toLowerCase().replace(/[\s\-_'’.·]/g, ''); }
@@ -196,6 +213,18 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
   function tag(w){
     if(!w[3]) return '';
     return '<span class="tag ' + (TAG[w[3]] || 'te') + '">' + esc(w[3]) + '</span>';
+  }
+  function ipa(x){ return '/' + String(x).replace(/^[\/\[]+|[\/\]]+$/g, '').trim() + '/'; }
+  function phPlain(w){                              // 英 /…/ 美 /…/（纯文本）
+    var uk = (w[1] || '').trim(), us = (w[4] || '').trim();
+    if(!uk && !us) return '';
+    if(uk && us) return '英 ' + ipa(uk) + ' 美 ' + ipa(us);
+    return (uk ? '英 ' : '美 ') + ipa(uk || us);
+  }
+  function phText(w){ return phPlain(w).replace(' 美 ', '<span class="phgap">·</span>美 '); }
+  function phShort(w){                              // 列表：只显示一条
+    var p = (w[1] || '').trim() || (w[4] || '').trim();
+    return p ? ipa(p) : '';
   }
   function flash(msg){
     el.toast.textContent = msg; el.toast.classList.add('show');
@@ -342,7 +371,7 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
     for(var k=0;k<n;k++){
       var w = words[st.list[k]];
       h += '<div class="item" data-i="' + st.list[k] + '"><div class="w">' + esc(w[0]) +
-           (w[1] ? '<span class="ph">' + esc(w[1]) + '</span>' : '') + tag(w) +
+           (phShort(w) ? '<span class="ph">' + esc(phShort(w)) + '</span>' : '') + tag(w) +
            '</div><div class="d">' + esc(w[2]) + '</div></div>';
     }
     h += '</div>';
@@ -398,7 +427,7 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
       } else {
         var w = words[i];
         rows += '<div class="bitem" data-w="' + esc(w[0]) + '"><div class="bw">' + esc(w[0]) +
-                (w[1] ? '<span class="ph">' + esc(w[1]) + '</span>' : '') + tag(w) +
+                (phShort(w) ? '<span class="ph">' + esc(phShort(w)) + '</span>' : '') + tag(w) +
                 '</div><div class="bd">' + esc(w[2]) + '</div></div>';
       }
     });
@@ -433,7 +462,7 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
     idx.forEach(function(i){
       var w = words[i];
       h += '<div class="item" data-i="' + i + '"><div class="w">' + esc(w[0]) +
-           (w[1] ? '<span class="ph">' + esc(w[1]) + '</span>' : '') + tag(w) +
+           (phShort(w) ? '<span class="ph">' + esc(phShort(w)) + '</span>' : '') + tag(w) +
            '</div><div class="d">' + esc(w[2]) + '</div></div>';
     });
     h += '</div>';
@@ -496,8 +525,9 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
     return loadVocab().some(function(x){ return x.q.toLowerCase() === word.toLowerCase(); });
   }
   function renderWord(i){
-    var w = words[i], word = w[0], ph = w[1] || '', def = w[2] || '', full = word + (ph ? ' [' + ph + '] ' : ' ') + def;
-    var parts = def.split(/\s(?=[a-z]{1,4}\.\s)/), lis = '', has = inVocab(word);
+    var w = words[i], word = w[0], pt = phText(w), pp = phPlain(w), def = w[2] || '';
+    var full = word + (pp ? ' [' + pp + '] ' : ' ') + def;
+    var parts = def.split("；"), lis = '', has = inVocab(word);
     parts.forEach(function(p){ if(p.trim()) lis += '<li>' + esc(p.trim()) + '</li>'; });
     if(!lis) lis = '<li>' + esc(def) + '</li>';
     var backLabel = backCtx.type === 'browse' ? '返回词表'
@@ -505,7 +535,7 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
                   : backCtx.type === 'sentence' ? '返回拆词' : '返回首页';
     el.out.innerHTML =
       '<div class="card"><div class="top"><div><div class="word">' + esc(word) + tag(w) + '</div>' +
-      (ph ? '<div class="ph">' + esc(ph) + '</div>' : '') + '</div>' +
+      (pt ? '<div class="ph">' + pt + '</div>' : '') + '</div>' +
       '<button class="icon" id="btnSpeak">🔊</button>' +
       '<button class="icon' + (has ? ' starred' : '') + '" id="btnStar">' + (has ? '★' : '☆') + '</button></div>' +
       '<ul class="defs" id="defs">' + lis + '</ul>' +
@@ -518,7 +548,7 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
         saveVocab(l.filter(function(x){ return x.q.toLowerCase() !== word.toLowerCase(); }));
         this.textContent = '☆'; this.classList.remove('starred'); flash('已从生词本移除');
       } else {
-        addVocab(word, def, ph);
+        addVocab(word, def, pp);
         this.textContent = '★'; this.classList.add('starred'); flash('已加入生词本');
       }
     };
@@ -713,7 +743,7 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
   window.addEventListener('unhandledrejection', function(ev){ showFault('异步错误'); });
 
   /* ---------- 初始化 ---------- */
-  el.count.textContent = '共 ' + words.length + ' 词 · v16';
+  el.count.textContent = '词库加载中 · v21';
   renderBadge();
   emptyState();
   syncClear();
@@ -741,6 +771,35 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
     window.visualViewport.addEventListener('resize', pinDock);
     window.visualViewport.addEventListener('scroll', pinDock);
   }
+
+  /* ---------- 词库分段补齐：先出核心词，其余后台加载 ---------- */
+  var REST = ["dict-2.js", "dict-3.js", "dict-4.js", "dict-5.js", "dict-6.js", "dict-7.js", "dict-8.js"], restStarted = false;
+  function loadRest(){
+    if(restStarted) return;
+    restStarted = true;
+    var seq = Promise.resolve();
+    REST.forEach(function(src){
+      seq = seq.then(function(){
+        return new Promise(function(res){
+          var sc = document.createElement('script');
+          sc.src = src;
+          sc.onload = function(){
+            var arr = window.__REST__ || [];
+            window.__REST__ = null;
+            for(var k = 0; k < arr.length; k++) addWord(arr[k]);
+            el.count.textContent = '共 ' + words.length + ' 词 · v21';
+            res();
+          };
+          sc.onerror = function(){ res(); };
+          document.body.appendChild(sc);
+        });
+      });
+    });
+    seq.then(function(){
+      el.count.textContent = '共 ' + words.length + ' 词 · v21';
+    });
+  }
+  setTimeout(loadRest, 300);
   window.addEventListener('online', function(){ el.tip.textContent = '已联网 · 可翻译整句'; });
   window.addEventListener('offline', function(){ el.tip.textContent = '当前离线 · 查词照常可用'; });
 })();
