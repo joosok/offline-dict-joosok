@@ -1,6 +1,6 @@
 /* 离线词典 Service Worker：联网时优先取最新版，断网时回落到缓存 */
-const CACHE = 'offline-dict-v14';
-const CORE = ['./index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const CACHE = 'offline-dict-v17';
+const CORE = ['./index.html', './dict.js', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
