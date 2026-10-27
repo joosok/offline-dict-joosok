@@ -124,6 +124,21 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
 .qidx{font-size:12px;color:var(--muted);margin-bottom:10px}
 .qnav{display:flex;gap:10px}
 .qnav button{flex:1;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:12px;padding:10px;min-height:44px}
+.qscopes{display:flex;flex-wrap:wrap;gap:8px;padding:2px 0 10px}
+.qscopes .chip{padding:5px 11px;font-size:12px;min-height:30px}
+.qscopes .chip.on{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);border-color:transparent}
+.qscopes .chip .n{font-size:11px;color:var(--muted);margin-left:3px}
+.qgrade{display:flex;gap:10px;margin-top:2px}
+.qgrade button{flex:1;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:12px;padding:11px;min-height:46px;font-size:15px}
+.qgrade .no{color:#e06b6b;border-color:color-mix(in srgb,#e06b6b 45%,transparent)}
+.qgrade .yes{color:#4caf7d;border-color:color-mix(in srgb,#4caf7d 45%,transparent)}
+.qmeta{text-align:center;font-size:12px;color:var(--muted);margin-top:10px}
+.qspk{border:0;background:transparent;color:var(--muted);font-size:15px;padding:3px 7px;min-height:0}
+.qsum{text-align:center;padding:10px 0 4px}
+.qsum .big{font-size:30px;font-weight:700}
+.qsum .sub{font-size:13px;color:var(--muted);margin-top:6px}
+.qwlist{font-size:13px;color:var(--muted);margin:12px 0;line-height:1.9;word-break:break-word;text-align:left}
+.wt{font-size:10px;color:#e06b6b;background:color-mix(in srgb,#e06b6b 14%,transparent);border-radius:7px;padding:1px 6px;margin-left:6px;vertical-align:middle}
 /* ---------- 例句 / 星标 / 可点标签 ---------- */
 .exs{margin-top:14px}
 .exshd{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin:0 2px 4px}
@@ -174,7 +189,7 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
   <div class="hd"><h2>生词本</h2><button id="btnClose">关闭</button></div>
   <div class="tabs">
     <button class="tab on" data-tab="list" id="tabList">列表</button>
-    <button class="tab" data-tab="quiz" id="tabQuiz">自测</button>
+    <button class="tab" data-tab="quiz" id="tabQuiz">复习</button>
   </div>
   <div class="bd" id="vocabBody"></div>
   <div class="ft">
@@ -745,14 +760,24 @@ setTimeout(function(){
       el.vocabBody.innerHTML = '<div class="msg"><span class="big">🗂️</span>还没有收藏的词<br>查词后点右上角 ☆ 收藏</div>';
       return;
     }
-    var ox = 0;
-    l.forEach(function(v){ if(isOx(v.q)) ox++; });
-    if(vocabFilter && !ox) vocabFilter = '';
+    var ox = 0, wc = 0;
+    l.forEach(function(v){
+      if(isOx(v.q)) ox++;
+      if(wrongCount(v.q)) wc++;
+    });
+    if(vocabFilter === '牛津' && !ox) vocabFilter = '';
+    if(vocabFilter === '错词' && !wc) vocabFilter = '';
     var items = vocabFilter
-      ? l.filter(function(v){ return vocabFilter === '牛津' ? isOx(v.q) : wordTag(v.q) === vocabFilter; })
+      ? l.filter(function(v){
+          if(vocabFilter === '牛津') return isOx(v.q);
+          if(vocabFilter === '错词') return wrongCount(v.q) > 0;
+          return wordTag(v.q) === vocabFilter;
+        })
       : l;
     var h = '<div class="vfilter"><button class="chip' + (vocabFilter ? '' : ' on') +
             '" data-f="">全部 ' + l.length + '</button>' +
+            (wc ? '<button class="chip' + (vocabFilter === '错词' ? ' on' : '') +
+             '" data-f="错词">错词 ' + wc + '</button>' : '') +
             (ox ? '<button class="chip' + (vocabFilter === '牛津' ? ' on' : '') +
              '" data-f="牛津">牛津 ' + ox + '</button>' : '') + '</div><div id="vlist"></div>';
     el.vocabBody.innerHTML = h;
@@ -775,6 +800,11 @@ setTimeout(function(){
         og.onclick = function(e){ e.stopPropagation(); closeSheet(); browseTag('牛津'); };
         q.appendChild(og);
       }
+      var wcn = wrongCount(v.q);
+      if(wcn){
+        var wb = document.createElement('span'); wb.className = 'wt'; wb.textContent = '错' + wcn;
+        q.appendChild(wb);
+      }
       var a = document.createElement('div'); a.className = 'a';
       var spk = document.createElement('span'); spk.className = 'spk'; spk.textContent = '🔊';
       a.appendChild(spk); a.appendChild(document.createTextNode(v.a || ''));
@@ -792,32 +822,110 @@ setTimeout(function(){
     });
   }
 
-  /* ---------- 自测 ---------- */
-  var quiz = { i:0, reveal:false };
-  function renderQuiz(){
+  /* ---------- 自测 / 复习 ---------- */
+  var KEY_STATS = 'offline_dict_stats_v1', STATS = null;
+  function loadStats(){ return load(KEY_STATS, {}); }
+  function saveStats(s){ save(KEY_STATS, s); STATS = null; }
+  function statOf(w){ if(!STATS) STATS = loadStats(); return STATS[norm(w)]; }
+  function wrongCount(w){ var o = statOf(w); return o ? (o.w || 0) : 0; }
+  function markKnown(w){
+    var s = loadStats(), k = norm(w);
+    if(s[k]){ delete s[k]; saveStats(s); }
+  }
+  function markWrong(w){
+    var s = loadStats(), k = norm(w), o = s[k] || { w:0 };
+    o.w = (o.w || 0) + 1; o.t = Date.now();
+    s[k] = o; saveStats(s);
+  }
+  var quiz = { scope:'全部', queue:[], i:0, reveal:false, ok:0, no:0, wrong:[], done:false };
+  function shuffle(a){
+    for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)), t=a[i]; a[i]=a[j]; a[j]=t; }
+    return a;
+  }
+  function quizPool(){
     var l = loadVocab();
+    if(quiz.scope === '错词') return l.filter(function(v){ return wrongCount(v.q) > 0; });
+    if(quiz.scope === '牛津') return l.filter(function(v){ return isOx(v.q); });
+    if(quiz.scope !== '全部') return l.filter(function(v){ return wordTag(v.q) === quiz.scope; });
+    return l;
+  }
+  function scopeChips(){
+    var l = loadVocab(), c = { '全部': l.length, '错词': 0, '牛津': 0 }, h = '';
+    l.forEach(function(v){
+      if(wrongCount(v.q)) c['错词']++;
+      if(isOx(v.q)) c['牛津']++;
+      var t = wordTag(v.q);
+      if(t === '四级' || t === '六级' || t === '考研') c[t] = (c[t] || 0) + 1;
+    });
+    ['全部','错词','牛津','四级','六级','考研'].forEach(function(k){
+      if(!c[k]) return;
+      h += '<button class="chip' + (quiz.scope === k ? ' on' : '') + '" data-s="' + k + '">' + k +
+           '<span class="n">' + c[k] + '</span></button>';
+    });
+    return '<div class="qscopes">' + h + '</div>';
+  }
+  function startQuiz(scope){
+    if(scope !== undefined) quiz.scope = scope;
+    quiz.queue = shuffle(quizPool().slice()).slice(0, 30);
+    quiz.i = 0; quiz.reveal = false; quiz.ok = 0; quiz.no = 0; quiz.wrong = []; quiz.done = false;
+  }
+  function bindScopeChips(){
+    Array.prototype.forEach.call(el.vocabBody.querySelectorAll('.qscopes .chip'), function(b){
+      b.onclick = function(){ startQuiz(b.getAttribute('data-s')); renderQuiz(); };
+    });
+  }
+  function renderQuiz(){
     el.tabQuiz.classList.add('on'); el.tabList.classList.remove('on');
-    if(!l.length){
+    if(!loadVocab().length){
+      quiz.queue = [];
       el.vocabBody.innerHTML = '<div class="msg"><span class="big">🗂️</span>生词本是空的<br>先收藏几个词再来自测</div>';
       return;
     }
-    if(quiz.i >= l.length) quiz.i = 0;
-    var v = l[quiz.i];
-    el.vocabBody.innerHTML =
-      '<div class="qcard" id="qcard"><div class="qidx">' + (quiz.i + 1) + ' / ' + l.length + '</div>' +
+    if(!quiz.queue.length && !quiz.done) startQuiz();
+    var chips = scopeChips();
+    if(!quiz.queue.length){
+      el.vocabBody.innerHTML = chips + '<div class="msg">这个范围里还没有词<br>换个范围试试</div>';
+      bindScopeChips(); return;
+    }
+    if(quiz.done){
+      var wl = quiz.wrong.length
+        ? '<div class="qwlist">本轮不认识：' + quiz.wrong.map(function(w){ return esc(w); }).join('、') + '</div>'
+        : '<div class="qwlist">全部认识，很棒。</div>';
+      el.vocabBody.innerHTML = chips +
+        '<div class="qsum"><div class="big">' + quiz.ok + ' / ' + (quiz.ok + quiz.no) + '</div>' +
+        '<div class="sub">本轮认识 ' + quiz.ok + ' 词 · 不认识 ' + quiz.no + ' 词</div>' + wl +
+        '<div class="qgrade"><button class="no" id="qAgainWrong">再测错词</button>' +
+        '<button class="yes" id="qAgain">再来一轮</button></div></div>';
+      bindScopeChips();
+      $('#qAgainWrong').onclick = function(){ startQuiz('错词'); renderQuiz(); };
+      $('#qAgain').onclick = function(){ startQuiz(quiz.scope); renderQuiz(); };
+      return;
+    }
+    var v = quiz.queue[quiz.i];
+    el.vocabBody.innerHTML = chips +
+      '<div class="qcard" id="qcard"><div class="qidx">第 ' + (quiz.i + 1) + ' / ' + quiz.queue.length + ' 张</div>' +
       '<div class="qword">' + esc(v.q) + '</div>' +
-      (v.p ? '<div class="qph">' + esc(v.p) + '</div>' : '') +
+      (v.p ? '<div class="qph">' + esc(v.p) + '<button class="qspk" id="qSpeak">🔊</button></div>' : '') +
       '<div class="qdef' + (quiz.reveal ? '' : ' hide') + '">' +
-      (quiz.reveal ? esc(v.a || '') : '点击卡片查看释义') + '</div></div>' +
-      '<div class="qnav"><button id="qPrev">上一个</button>' +
-      '<button id="qToggle">' + (quiz.reveal ? '收起释义' : '显示释义') + '</button>' +
-      '<button id="qNext">下一个</button></div>';
-    $('#qcard').onclick = $('#qToggle').onclick = function(){ quiz.reveal = !quiz.reveal; renderQuiz(); };
-    $('#qPrev').onclick = function(){ quiz.i = (quiz.i - 1 + l.length) % l.length; quiz.reveal = false; renderQuiz(); };
-    $('#qNext').onclick = function(){ quiz.i = (quiz.i + 1) % l.length; quiz.reveal = false; renderQuiz(); };
+      (quiz.reveal ? esc(v.a || '（没有释义）') : '点击卡片查看释义') + '</div></div>' +
+      (quiz.reveal
+        ? '<div class="qgrade"><button class="no" id="qNo">不认识</button><button class="yes" id="qYes">认识</button></div>'
+        : '<div class="qnav"><button id="qToggle">显示释义</button></div>') +
+      '<div class="qmeta">认识 ' + quiz.ok + ' · 不认识 ' + quiz.no + '</div>';
+    bindScopeChips();
+    $('#qcard').onclick = function(){ quiz.reveal = !quiz.reveal; renderQuiz(); };
+    var tg = $('#qToggle'); if(tg) tg.onclick = function(e){ e.stopPropagation(); quiz.reveal = true; renderQuiz(); };
+    var sp = $('#qSpeak'); if(sp) sp.onclick = function(e){ e.stopPropagation(); speak(v.q); };
+    var yn = $('#qYes'); if(yn) yn.onclick = function(){ quiz.ok++; markKnown(v.q); nextQuiz(); };
+    var nn = $('#qNo'); if(nn) nn.onclick = function(){ quiz.no++; quiz.wrong.push(v.q); markWrong(v.q); nextQuiz(); };
+  }
+  function nextQuiz(){
+    quiz.reveal = false; quiz.i++;
+    if(quiz.i >= quiz.queue.length) quiz.done = true;
+    renderQuiz();
   }
   el.tabList.onclick = function(){ sheetTab = 'list'; renderTab(); };
-  el.tabQuiz.onclick = function(){ sheetTab = 'quiz'; quiz.i = 0; quiz.reveal = false; renderTab(); };
+  el.tabQuiz.onclick = function(){ sheetTab = 'quiz'; quiz.queue = []; quiz.scope = '全部'; startQuiz(); renderTab(); };
 
   function openSheet(){ renderTab(); el.sheet.classList.add('show'); el.backdrop.classList.add('show'); }
   function closeSheet(){ el.sheet.classList.remove('show'); el.backdrop.classList.remove('show'); }
@@ -882,7 +990,7 @@ setTimeout(function(){
   window.addEventListener('unhandledrejection', function(ev){ showFault('异步错误'); });
 
   /* ---------- 初始化 ---------- */
-  el.count.textContent = '词库加载中 · v22';
+  el.count.textContent = '词库加载中 · v23';
   renderBadge();
   emptyState();
   syncClear();
@@ -926,7 +1034,7 @@ setTimeout(function(){
             var arr = window.__REST__ || [];
             window.__REST__ = null;
             for(var k = 0; k < arr.length; k++) addWord(arr[k]);
-            el.count.textContent = '共 ' + words.length + ' 词 · v22';
+            el.count.textContent = '共 ' + words.length + ' 词 · v23';
             res();
           };
           sc.onerror = function(){ res(); };
@@ -935,7 +1043,7 @@ setTimeout(function(){
       });
     });
     seq.then(function(){
-      el.count.textContent = '共 ' + words.length + ' 词 · v22';
+      el.count.textContent = '共 ' + words.length + ' 词 · v23';
       var tr = document.getElementById('tagRow');
       if(tr && !el.q.value.trim() && backCtx.type === 'home'){
         tr.innerHTML = tagRow();
