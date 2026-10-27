@@ -1,5 +1,5 @@
 /* 离线词典 Service Worker：联网时优先取最新版，断网时回落到缓存 */
-const CACHE = 'offline-dict-v23';
+const CACHE = 'offline-dict-v24';
 /* 安装时只预缓存外壳 + 前两段词库（快），其余分片在激活后后台补齐 */
 const CORE = ['./index.html', './oxford.js', './dict.js', './dict-2.js', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 const REST = ['./dict-3.js', './dict-4.js', './dict-5.js', './dict-6.js', './dict-7.js', './dict-8.js', './ex.js'];

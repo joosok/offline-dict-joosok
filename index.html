@@ -92,6 +92,18 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
 .dockinner input::placeholder{color:var(--muted)}
 .dockclear{width:30px;height:30px;min-height:0;border:0;background:transparent;color:var(--muted);font-size:18px;padding:0;border-radius:50%;display:none}
 .dockclear.show{display:block}
+/* ---------- 悬浮返回键 & 搜索联想 ---------- */
+.fabback{position:fixed;left:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:33;width:44px;height:44px;min-height:0;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:19px;line-height:1;box-shadow:var(--shadow);display:none;align-items:center;justify-content:center}
+.fabback.show{display:flex}
+.fabback:active{transform:scale(.94)}
+.sug{position:fixed;left:12px;right:12px;z-index:29;bottom:calc(96px + env(safe-area-inset-bottom));background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:auto;max-height:40vh;display:none}
+.sug.show{display:block}
+.sugitem{display:flex;align-items:baseline;gap:8px;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:transparent;color:var(--fg);padding:10px 14px;min-height:44px;font:inherit}
+.sugitem:first-child{border-top:0}
+.sugitem b{font-size:15px;font-weight:600;white-space:nowrap}
+.sugitem span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.topback{margin:4px 0 10px}
+.topback button{width:100%;border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:8px;min-height:40px;font-size:13px}
 /* ---------- 生词本 ---------- */
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:.2s;z-index:40}
 .backdrop.show{opacity:1;pointer-events:auto}
@@ -183,6 +195,8 @@ main{position:relative;z-index:1;padding:4px 16px calc(128px + env(safe-area-ins
     <button class="dockclear" id="btnClearQ" aria-label="清空">×</button>
   </div>
 </div>
+<button class="fabback" id="fabBack" aria-label="返回">←</button>
+<div class="sug" id="sug"></div>
 
 <div class="backdrop" id="backdrop"></div>
 <div class="sheet" id="sheet">
@@ -403,7 +417,7 @@ setTimeout(function(){
 
   /* ---------- 结果渲染 ---------- */
   /* ---------- 按来源浏览词库 ---------- */
-  var PAGE = 60, browseSt = { tag:'', list:[], shown:PAGE }, backCtx = { type:'home' };
+  var PAGE = 60, browseSt = { tag:'', list:[], shown:PAGE }, backCtx = { type:'home' }, view = 'home';
   var TAG_ORDER = ['牛津','六级','雅思','托福','四级','考研','GRE','高频','基础','物流','常用','扩展'];
   var OXL = window.__OX__ || [], OXS = null;
   function oxSet(){ if(!OXS){ OXS = {}; OXL.forEach(function(w){ OXS[w] = 1; }); } return OXS; }
@@ -443,7 +457,8 @@ setTimeout(function(){
   }
   function renderBrowse(){
     var st = browseSt, n = Math.min(st.shown, st.list.length), h = '';
-    h = '<div class="bmeta"><span>' + esc(st.tag) + ' 词表</span><span>共 ' +
+    h = '<div class="tools topback"><button id="btnBrowseBack">← 返回首页</button></div>' +
+        '<div class="bmeta"><span>' + esc(st.tag) + ' 词表</span><span>共 ' +
         st.list.length + ' 词</span></div><div class="list">';
     for(var k=0;k<n;k++){
       var w = words[st.list[k]];
@@ -464,11 +479,14 @@ setTimeout(function(){
     var m = $('#btnMore');
     if(m) m.onclick = function(){ st.shown += PAGE; renderBrowse(); };
     $('#btnHome').onclick = function(){ el.q.value = ''; syncClear(); emptyState(); };
+    var bb = $('#btnBrowseBack'); if(bb) bb.onclick = $('#btnHome').onclick;
+    view = 'browse';
     resetScroll();
   }
 
   function emptyState(){
     backCtx = { type:'home' };
+    view = 'home';
     el.out.innerHTML = '<div class="msg"><span class="big">✦</span>输入单词开始查<br><span style="font-size:12px">不联网、不占流量也能用</span></div>' +
       '<div class="tools"><button id="btnRand">🎲 随便看看一个词</button></div>' +
       '<div class="browse"><div class="bhd">按考试 / 来源浏览词库</div>' +
@@ -481,6 +499,7 @@ setTimeout(function(){
     };
     bindTagRow();
     renderHist();
+    syncNav();
   }
   function isSentence(kw){ return /[\s,.;:!?，。；！？]/.test(String(kw).trim()); }
 
@@ -527,9 +546,10 @@ setTimeout(function(){
 
   function syncNav(){
     var b = document.getElementById('btnBackTop');
-    if(!b) return;
-    var t = backCtx && backCtx.type;
-    b.style.display = (t && t !== 'home') ? 'block' : 'none';
+    var show = !!(el.q.value.trim() || (view && view !== 'home') || (backCtx && backCtx.type !== 'home'));
+    if(b) b.style.display = show ? 'block' : 'none';
+    var f = document.getElementById('fabBack'), sg = document.getElementById('sug');
+    if(f) f.classList.toggle('show', show && !(sg && sg.classList.contains('show')));
   }
   function resetScroll(){ syncNav(); if(window.scrollY) window.scrollTo(0,0); }
 
@@ -548,6 +568,7 @@ setTimeout(function(){
       };
     });
     bindStars();
+    view = 'results';
     resetScroll();
   }
 
@@ -558,7 +579,7 @@ setTimeout(function(){
     renderHist();
     if(isSentence(kw) && exactIdx(kw) === null){
       var sh = sentenceHTML(kw);
-      if(sh){ backCtx = back || { type:'home' }; el.out.innerHTML = sh; bindSentence(kw); resetScroll(); return; }
+      if(sh){ backCtx = back || { type:'home' }; el.out.innerHTML = sh; bindSentence(kw); view = 'sentence'; resetScroll(); return; }
     }
     var idx = search(kw);
     if(!idx.length){
@@ -567,6 +588,7 @@ setTimeout(function(){
         '」<br><span style="font-size:13px">可能是超纲词或拼写有误；联网时可用下方在线翻译</span></div>' +
         '<div class="tools"><button id="btnOnline">联网翻译这个词/句</button></div></div>';
       var b = $('#btnOnline'); if(b) b.onclick = function(){ onlineTranslate(kw); };
+      view = 'notfound';
       resetScroll();
       return;
     }
@@ -579,6 +601,8 @@ setTimeout(function(){
   }
 
   function goBack(){
+    if(el.sheet.classList.contains('show')){ closeSheet(); return; }
+    hideSug();
     var c = backCtx || { type:'home' };
     backCtx = { type:'home' };
     if(c.type === 'browse'){
@@ -588,10 +612,11 @@ setTimeout(function(){
       renderResults(c.idx);
     } else if(c.type === 'sentence' && c.kw){
       var sh = sentenceHTML(c.kw);
-      if(sh){ el.q.value = c.kw; syncClear(); el.out.innerHTML = sh; bindSentence(c.kw); }
+      if(sh){ el.q.value = c.kw; syncClear(); el.out.innerHTML = sh; bindSentence(c.kw); view = 'sentence'; resetScroll(); }
       else { el.q.value = ''; syncClear(); emptyState(); }
     } else {
-      el.q.value = ''; syncClear(); emptyState();
+      if(el.q.value){ el.q.value = ''; syncClear(); }
+      emptyState();
     }
   }
 
@@ -652,6 +677,7 @@ setTimeout(function(){
       h += '<div class="exload">例句来自 Tatoeba</div>';
       exBox.innerHTML = h;
     });
+    view = 'word';
     resetScroll();
   }
 
@@ -931,7 +957,61 @@ setTimeout(function(){
   function closeSheet(){ el.sheet.classList.remove('show'); el.backdrop.classList.remove('show'); }
 
   /* ---------- 事件 ---------- */
-  function syncClear(){ el.clearQ.classList.toggle('show', !!el.q.value); }
+  function syncClear(){ el.clearQ.classList.toggle('show', !!el.q.value); syncNav(); }
+
+  /* ---------- 输入联想 ---------- */
+  var sugEl = document.getElementById('sug');
+  function hideSug(){
+    if(!sugEl) return;
+    sugEl.classList.remove('show');
+    sugEl.innerHTML = '';
+    syncNav();
+  }
+  function buildSug(kw){
+    if(!sugEl) return;
+    kw = String(kw).trim().toLowerCase();
+    if(!kw || kw.length > 24 || isSentence(kw)){ hideSug(); return; }
+    var MAX = 8, pre = [], mid = [], i, lw;
+    for(i=0;i<words.length;i++){
+      lw = words[i][0].toLowerCase();
+      if(lw.indexOf(kw) === 0 && lw !== kw) pre.push(i);
+    }
+    if(pre.length){
+      pre.sort(function(a,b){
+        var x = words[a][0], y = words[b][0];
+        return x.length - y.length || (x < y ? -1 : x > y ? 1 : 0);
+      });
+      pre = pre.slice(0, MAX);
+    }
+    if(pre.length < MAX){
+      for(i=0;i<words.length && pre.length + mid.length < MAX;i++){
+        lw = words[i][0].toLowerCase();
+        if(lw !== kw && lw.indexOf(kw) > 0) mid.push(i);
+      }
+    }
+    var list = pre.concat(mid).slice(0, MAX);
+    if(!list.length){ hideSug(); return; }
+    var h = '';
+    list.forEach(function(k){
+      var w = words[k];
+      h += '<button class="sugitem" data-i="' + k + '"><b>' + esc(w[0]) + '</b><span>' +
+           esc((w[2] || '').split('；')[0]) + '</span></button>';
+    });
+    sugEl.innerHTML = h;
+    sugEl.classList.add('show');
+    Array.prototype.forEach.call(sugEl.querySelectorAll('.sugitem'), function(b){
+      b.onmousedown = function(e){ e.preventDefault(); };
+      b.onclick = function(){ pickSug(parseInt(b.getAttribute('data-i'), 10)); };
+    });
+    syncNav();
+  }
+  function pickSug(i){
+    var w = words[i]; if(!w) return;
+    el.q.value = w[0]; syncClear(); hideSug(); el.q.blur();
+    backCtx = { type:'home' };
+    pushHist(w[0]); renderWord(i);
+  }
+
   var timer = null, composing = false;
   el.q.addEventListener('keydown', function(e){
     if(e.key !== 'Enter') return;
@@ -939,6 +1019,7 @@ setTimeout(function(){
     clearTimeout(timer);
     var v = el.q.value;
     if(!v.trim()) return;
+    hideSug();
     el.q.blur();
     doSearch(v, true);
   });
@@ -947,6 +1028,7 @@ setTimeout(function(){
     composing = false; syncClear();
     clearTimeout(timer);
     var v = el.q.value;
+    if(v.trim()) buildSug(v);
     timer = setTimeout(function(){ doSearch(v, false); }, 120);
   });
   el.q.addEventListener('input', function(){
@@ -954,11 +1036,14 @@ setTimeout(function(){
     if(composing) return;
     clearTimeout(timer);
     var v = el.q.value;
-    if(!v.trim()){ emptyState(); return; }
+    if(!v.trim()){ hideSug(); emptyState(); return; }
+    buildSug(v);
     timer = setTimeout(function(){ doSearch(v, false); }, 180);
   });
-  el.q.addEventListener('search', function(){ if(el.q.value.trim()) doSearch(el.q.value, true); });
-  el.clearQ.onclick = function(){ el.q.value = ''; syncClear(); emptyState(); el.q.focus(); };
+  el.q.addEventListener('search', function(){ hideSug(); if(el.q.value.trim()) doSearch(el.q.value, true); });
+  el.q.addEventListener('focus', function(){ if(el.q.value.trim()) buildSug(el.q.value); syncNav(); });
+  el.q.addEventListener('blur', function(){ setTimeout(hideSug, 200); syncNav(); });
+  el.clearQ.onclick = function(){ el.q.value = ''; syncClear(); hideSug(); emptyState(); el.q.focus(); };
   $('#btnVocab').onclick = openSheet;
   $('#btnClose').onclick = closeSheet;
   el.backdrop.onclick = closeSheet;
@@ -984,13 +1069,15 @@ setTimeout(function(){
         '<div class="tools"><button id="btnRecover">返回首页</button></div></div>';
       var b = $('#btnRecover');
       if(b) b.onclick = function(){ el.q.value = ''; syncClear(); emptyState(); };
+      view = 'fault';
+      syncNav();
     }catch(e){}
   }
   window.addEventListener('error', function(ev){ showFault(ev && ev.message); });
   window.addEventListener('unhandledrejection', function(ev){ showFault('异步错误'); });
 
   /* ---------- 初始化 ---------- */
-  el.count.textContent = '词库加载中 · v23';
+  el.count.textContent = '词库加载中 · v24';
   renderBadge();
   emptyState();
   syncClear();
@@ -998,6 +1085,7 @@ setTimeout(function(){
 
   var bootEl = document.getElementById('boot'); if(bootEl) bootEl.remove();
   var btk = document.getElementById('btnBackTop'); if(btk) btk.onclick = goBack;
+  var fbk = document.getElementById('fabBack'); if(fbk) fbk.onclick = goBack;
   setTimeout(function(){ var b = document.getElementById('boot'); if(b) b.remove(); }, 6000);
 
   /* ---------- 禁止双指/双击缩放 ---------- */
@@ -1013,7 +1101,10 @@ setTimeout(function(){
     var pinDock = function(){
       var vv = window.visualViewport;
       var gap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      dockEl.style.transform = gap ? 'translateY(' + gap + 'px)' : '';
+      var t = gap ? 'translateY(' + gap + 'px)' : '';
+      dockEl.style.transform = t;
+      var fb = document.getElementById('fabBack'); if(fb) fb.style.transform = t;
+      var sg = document.getElementById('sug'); if(sg) sg.style.transform = t;
     };
     window.visualViewport.addEventListener('resize', pinDock);
     window.visualViewport.addEventListener('scroll', pinDock);
@@ -1034,7 +1125,7 @@ setTimeout(function(){
             var arr = window.__REST__ || [];
             window.__REST__ = null;
             for(var k = 0; k < arr.length; k++) addWord(arr[k]);
-            el.count.textContent = '共 ' + words.length + ' 词 · v23';
+            el.count.textContent = '共 ' + words.length + ' 词 · v24';
             res();
           };
           sc.onerror = function(){ res(); };
@@ -1043,7 +1134,7 @@ setTimeout(function(){
       });
     });
     seq.then(function(){
-      el.count.textContent = '共 ' + words.length + ' 词 · v23';
+      el.count.textContent = '共 ' + words.length + ' 词 · v24';
       var tr = document.getElementById('tagRow');
       if(tr && !el.q.value.trim() && backCtx.type === 'home'){
         tr.innerHTML = tagRow();
